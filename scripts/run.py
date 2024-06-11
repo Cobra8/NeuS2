@@ -28,7 +28,7 @@ import pyngp as ngp # noqa
 
 from torch.utils.tensorboard import SummaryWriter
 
-def parse_args():
+def parser():
 	parser = argparse.ArgumentParser(description="Run neural graphics primitives testbed with additional configuration & output options")
 
 	parser.add_argument("--name", default="neus", type=str, required=True)
@@ -68,14 +68,14 @@ def parse_args():
 	parser.add_argument("--shaded_mesh", action='store_true')
 	parser.add_argument("--white_bkgd", action='store_true')
 
-	args = parser.parse_args()
-	return args
+	return parser
+
+def parse_args():
+	return parser().parse_args()
 
 
-if __name__ == "__main__":
-	args = parse_args()
-
-	args.output_path = os.path.join('output',args.name)
+def main(args):
+	args.output_path = os.path.join('output', args.name)
 	os.makedirs(os.path.join(args.output_path,"checkpoints"), exist_ok=True)
 	os.makedirs(os.path.join(args.output_path,"mesh"), exist_ok=True)
 	
@@ -161,8 +161,6 @@ if __name__ == "__main__":
 			testbed.init_window(sw, sh)
 
 		testbed.shall_train = args.train if args.gui else True
-
-
 		testbed.nerf.render_with_camera_distortion = True
 
 		network_stem = os.path.splitext(os.path.basename(network))[0]
@@ -191,16 +189,19 @@ if __name__ == "__main__":
 
 			# Optionally match nerf paper behaviour and train on a
 			# fixed white bg. We prefer training on random BG colors.
-			# testbed.background_color = [1.0, 1.0, 1.0, 1.0]
-			# testbed.nerf.training.random_bg_color = False
+			testbed.background_color = [1.0, 1.0, 1.0, 1.0]
+			testbed.nerf.training.random_bg_color = False
 
 		old_training_step = 0
 		n_steps = args.n_steps
 		if n_steps < 0:
 			n_steps = 100000
 
-		args.save_snapshot = os.path.join(args.output_path,"checkpoints",f"{n_steps}.msgpack")
-		args.save_mesh_path = os.path.join(args.output_path,"mesh",f"{n_steps}.obj")
+		args.save_snapshot = os.path.join(args.output_path, "checkpoints", f"{n_steps}.msgpack") if args.save_snapshot == "" else os.path.join(args.save_snapshot, f"{n_steps}.msgpack")
+		args.save_mesh_path = os.path.join(args.output_path, "mesh", f"{n_steps}.obj") if args.save_mesh_path == "" else os.path.join(args.save_mesh_path, f"{n_steps}.obj")
+		
+		os.makedirs(os.path.dirname(args.save_snapshot), exist_ok=True)
+		os.makedirs(os.path.dirname(args.save_mesh_path), exist_ok=True)
 
 		tqdm_last_update = 0
 		if n_steps > 0:
@@ -238,7 +239,6 @@ if __name__ == "__main__":
 			print("Saving snapshot ", args.save_snapshot)
 			testbed.save_snapshot(args.save_snapshot, False)
 
-		
 		res = args.marching_cubes_res or 256
 		print(f"Generating mesh via marching cubes and saving to {args.save_mesh_path}. Resolution=[{res},{res},{res}]")
 		testbed.compute_and_save_marching_cubes_mesh(args.save_mesh_path, [res, res, res])
@@ -247,8 +247,6 @@ if __name__ == "__main__":
 		log_ptr = open(log_path, "w+")
 		render_img_training_view(args, testbed, log_ptr, args.scene)
 		
-
-
 		if args.test_transforms:
 			print("Evaluating test transforms from ", args.test_transforms)
 			with open(args.test_transforms) as f:
@@ -349,34 +347,39 @@ if __name__ == "__main__":
 			print(f"Generating mesh via marching cubes and saving to {args.save_mesh_path}. Resolution=[{res},{res},{res}]")
 			testbed.compute_and_save_marching_cubes_mesh(args.save_mesh_path, [res, res, res])
 
-		if args.width:
-			if ref_transforms:
-				testbed.fov_axis = 0
-				testbed.fov = ref_transforms["camera_angle_x"] * 180 / np.pi
-				if not args.screenshot_frames:
-					args.screenshot_frames = range(len(ref_transforms["frames"]))
-				print(args.screenshot_frames)
-				for idx in args.screenshot_frames:
-					f = ref_transforms["frames"][int(idx)]
-					cam_matrix = f["transform_matrix"]
-					testbed.set_nerf_camera_matrix(np.matrix(cam_matrix)[:-1,:])
-					outname = os.path.join(args.screenshot_dir, os.path.basename(f["file_path"]))
+		if ref_transforms:
+			testbed.fov_axis = 0
+			# testbed.fov = ref_transforms["camera_angle_x"] * 180 / np.pi
+			if not args.screenshot_frames:
+				args.screenshot_frames = range(len(ref_transforms["frames"]))
 
-					# Some NeRF datasets lack the .png suffix in the dataset metadata
-					if not os.path.splitext(outname)[1]:
-						outname = outname + ".png"
+			for idx in args.screenshot_frames:
+				f = ref_transforms["frames"][int(idx)]
+				cam_matrix = f["transform_matrix"]
+				testbed.set_nerf_camera_matrix(np.matrix(cam_matrix)[:-1,:])
+				outname = os.path.join(args.screenshot_dir, f"test-{idx:03d}.png") # os.path.basename(f["file_path"])
 
-					print(f"rendering {outname}")
-					image = testbed.render(args.width or int(ref_transforms["w"]), args.height or int(ref_transforms["h"]), args.screenshot_spp, True)
-					os.makedirs(os.path.dirname(outname), exist_ok=True)
-					write_image(outname, image)
-			elif args.screenshot_dir:
-				outname = os.path.join(args.screenshot_dir, args.scene + "_" + network_stem)
-				print(f"Rendering {outname}.png")
-				image = testbed.render(args.width, args.height, args.screenshot_spp, True)
-				if os.path.dirname(outname) != "":
-					os.makedirs(os.path.dirname(outname), exist_ok=True)
-				write_image(outname + ".png", image)
+				# Some NeRF datasets lack the .png suffix in the dataset metadata
+				if not os.path.splitext(outname)[1]:
+					outname = outname + ".png"
 
+				print(f"rendering {outname}")
+				image = testbed.render(args.width or int(ref_transforms["w"]), args.height or int(ref_transforms["h"]), args.screenshot_spp, True)
+
+				os.makedirs(os.path.dirname(outname), exist_ok=True)
+				write_image(outname, image)
+		elif args.width and args.screenshot_dir:
+			outname = os.path.join(args.screenshot_dir, args.scene + "_" + network_stem)
+			print(f"Rendering {outname}.png")
+			image = testbed.render(args.width, args.height, args.screenshot_spp, True)
+			if os.path.dirname(outname) != "":
+				os.makedirs(os.path.dirname(outname), exist_ok=True)
+			write_image(outname + ".png", image)
+
+
+if __name__ == "__main__":
+	args = parse_args()
+
+	main(args)
 
 
