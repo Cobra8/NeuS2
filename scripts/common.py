@@ -170,7 +170,6 @@ def write_image(file, img, quality=95):
 			# Unmultiply alpha
 			img[...,0:3] = np.divide(img[...,0:3], img[...,3:4], out=np.zeros_like(img[...,0:3]), where=img[...,3:4] != 0)
 			img[...,0:3] = linear_to_srgb(img[...,0:3])
-			img = img[..., :3] # remove alpha channel (tensor becomes [w, h, 3] instead of [w, h, 4])
 		else:
 			img = linear_to_srgb(img)
 		write_image_imageio(file, img, quality)

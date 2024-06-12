@@ -47,6 +47,8 @@ def parser():
 	parser.add_argument("--screenshot_frames", nargs="*", help="Which frame(s) to take screenshots of.")
 	parser.add_argument("--screenshot_dir", default="", help="Which directory to output screenshots to.")
 	parser.add_argument("--screenshot_spp", type=int, default=16, help="Number of samples per pixel in screenshots.")
+	parser.add_argument("--screenshot_offset", type=int, default=0, help="Offset screenshot image generation by some amount")
+	parser.add_argument("--screenshot_augment", action="store_true", help="Different naming for augmenting and testing")
 
 	parser.add_argument("--save_mesh", action="store_true")
 	parser.add_argument("--save_mesh_path", default="", help="Output a marching-cubes based mesh from the NeRF or SDF model. Supports OBJ and PLY format.")
@@ -351,13 +353,13 @@ def main(args):
 			testbed.fov_axis = 0
 			# testbed.fov = ref_transforms["camera_angle_x"] * 180 / np.pi
 			if not args.screenshot_frames:
-				args.screenshot_frames = range(len(ref_transforms["frames"]))
+				args.screenshot_frames = range(args.screenshot_offset, len(ref_transforms["frames"]))
 
 			for idx in args.screenshot_frames:
 				f = ref_transforms["frames"][int(idx)]
 				cam_matrix = f["transform_matrix"]
 				testbed.set_nerf_camera_matrix(np.matrix(cam_matrix)[:-1,:])
-				outname = os.path.join(args.screenshot_dir, f"test-{idx:03d}.png") # os.path.basename(f["file_path"])
+				outname = os.path.join(args.screenshot_dir, f"{idx:04d}.png" if args.screenshot_augment else f"test-{idx:03d}.png") # os.path.basename(f["file_path"])
 
 				# Some NeRF datasets lack the .png suffix in the dataset metadata
 				if not os.path.splitext(outname)[1]:
@@ -365,6 +367,8 @@ def main(args):
 
 				print(f"rendering {outname}")
 				image = testbed.render(args.width or int(ref_transforms["w"]), args.height or int(ref_transforms["h"]), args.screenshot_spp, True)
+				if not args.screenshot_augment:
+					image = image[..., :3] # remove alpha channel (tensor becomes [w, h, 3] instead of [w, h, 4])
 
 				os.makedirs(os.path.dirname(outname), exist_ok=True)
 				write_image(outname, image)
